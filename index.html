@@ -263,22 +263,36 @@ const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
 async function loadParticipants() {
   try {
     const res = await fetch(JSONBIN_URL + "/latest", {
-      headers: { "X-Master-Key": JSONBIN_KEY }
+      headers: { "X-Master-Key": JSONBIN_KEY, "X-Bin-Meta": "false" }
     });
-    if (!res.ok) return [];
+    console.log("Load status:", res.status);
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error("Load error:", txt);
+      return [];
+    }
     const json = await res.json();
-    return json.record?.participants || [];
-  } catch { return []; }
+    console.log("Loaded data:", json);
+    return json.record?.participants || json.participants || [];
+  } catch (e) {
+    console.error("Load exception:", e);
+    return [];
+  }
 }
 
 async function saveParticipants(data) {
   try {
-    await fetch(JSONBIN_URL, {
+    const res = await fetch(JSONBIN_URL, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", "X-Master-Key": JSONBIN_KEY },
+      headers: { "Content-Type": "application/json", "X-Master-Key": JSONBIN_KEY, "X-Bin-Meta": "false" },
       body: JSON.stringify({ participants: data })
     });
-  } catch (e) { console.error("Save failed:", e); }
+    console.log("Save status:", res.status);
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error("Save error:", txt);
+    }
+  } catch (e) { console.error("Save exception:", e); }
 }
 
 function MastersPool() {
