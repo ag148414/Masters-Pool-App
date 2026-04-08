@@ -358,8 +358,12 @@ function MastersPool() {
     const cleaned = editP.map(p => ({ ...p, picks: p.picks.filter(x => x?.trim()) }));
     setSaveMsg("Saving...");
     await saveParticipants(cleaned);
-    setParticipants(cleaned);
-    setSaveMsg("Saved!"); setTimeout(() => setSaveMsg(""), 2500);
+    // Re-fetch from JSONBin to confirm what was saved
+    const confirmed = await loadParticipants();
+    setParticipants(confirmed);
+    setEditP(JSON.parse(JSON.stringify(confirmed)));
+    setSaveMsg("Saved! (" + confirmed.length + " participants)");
+    setTimeout(() => setSaveMsg(""), 4000);
   }
 
   function addParticipant() {
