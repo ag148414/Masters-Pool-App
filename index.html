@@ -389,7 +389,7 @@ function MastersPool() {
                           <div className="participant-summary">
                             <div className={`pos-num ${pc}`}>{i+1}</div>
                             <div>
-                              <div className="p-name">{row.name}</div>
+                              <div className="p-name">{row.name}{row.tiebreaker && <span style={{fontSize:11,fontWeight:400,color:"rgba(201,168,76,0.7)",marginLeft:8}}>TB: {row.tiebreaker}</span>}</div>
                               <div className="p-preview">{row.picks.filter(Boolean).slice(0,4).join(", ")}{row.picks.filter(Boolean).length>4?"…":""}</div>
                             </div>
                             <div className={`p-total ${cls(row.grandTotal)}`}>{fmt(row.grandTotal)}</div>
