@@ -196,6 +196,7 @@ function parseESPN(data) {
       topar, rounds: roundsTP, strokes: roundStrokes,
       thru: comp.status?.period ? (comp.status.type?.completed ? "F" : comp.status.period.toString()) : "-",
       status: isMC ? "cut" : isWD ? "wd" : "active",
+      teeTime: comp.teeTime || null,
     };
   });
   return players;
@@ -221,19 +222,32 @@ async function parsePicksExcel(file) {
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        const wb = XLSX.read(e.target.result, { type: "array" });
+        // Use cellFormula:true and raw:false to capture dropdown-validated cell values
+        const wb = XLSX.read(e.target.result, { type: "array", cellFormula: true, cellNF: false, raw: false });
         const wsName = wb.SheetNames.includes("My Picks") ? "My Picks" : wb.SheetNames[0];
         const ws = wb.Sheets[wsName];
         if (!ws) { reject(new Error("No 'My Picks' sheet found.")); return; }
-        const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-        const participantName = ((data[4] || [])[2] || "").toString().trim();
+
+        // Helper to get cell value by Excel address (e.g. "C5"), handles dropdown cells
+        function getCellVal(addr) {
+          const cell = ws[addr];
+          if (!cell) return "";
+          // Try .v (value), then .w (formatted), then .f (formula text for dropdowns)
+          const v = cell.v !== undefined && cell.v !== null ? String(cell.v).trim() : "";
+          const w = cell.w !== undefined && cell.w !== null ? String(cell.w).trim() : "";
+          return v || w || "";
+        }
+
+        const participantName = getCellVal("C5");
         if (!participantName) { reject(new Error("No name in YOUR NAME cell.")); return; }
+
         const picks = [];
-        for (let i = 7; i <= 14; i++) {
-          const val = ((data[i] || [])[2] || "").toString().trim();
+        const pickAddrs = ["C8","C9","C10","C11","C12","C13","C14","C15"];
+        for (const addr of pickAddrs) {
+          const val = getCellVal(addr);
           if (val) picks.push(val);
         }
-        const tiebreaker = ((data[15] || [])[2] || "").toString().trim() || null;
+        const tiebreaker = getCellVal("C16") || null;
         resolve({ name: participantName, picks: [...picks, ...Array(PICKS_PER_PERSON).fill("")].slice(0, PICKS_PER_PERSON), tiebreaker });
       } catch (err) { reject(err); }
     };
@@ -429,7 +443,7 @@ function MastersPool() {
           : !allPlayers.length ? <div className="loading">No scores yet. Tournament may not have started.</div>
           : (
             <table className="live-table">
-              <thead><tr><th style={{width:50}}>Pos</th><th>Player</th><th className="r">Total</th><th className="r">R1</th><th className="r">R2</th><th className="r">R3</th><th className="r">R4</th><th className="r">Thru</th></tr></thead>
+              <thead><tr><th style={{width:50}}>Pos</th><th>Player</th><th className="r">Total</th><th className="r">R1</th><th className="r">R2</th><th className="r">R3</th><th className="r">R4</th><th className="r">Thru</th><th className="r">Tee Time</th></tr></thead>
               <tbody>
                 {allPlayers.map(p => (
                   <tr key={p.name} className={p.status==="cut"||p.status==="wd"?"cut-row":""}>
@@ -442,6 +456,7 @@ function MastersPool() {
                       :p.status==="wd"?<span className="thru-badge wd">WD</span>
                       :<span className="thru-badge active">{p.thru||"-"}</span>}
                     </td>
+                    <td className="r" style={{fontSize:11,color:"rgba(245,240,232,0.5)"}}>{p.teeTime||"—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -463,7 +478,7 @@ function MastersPool() {
           </div>
           {!allPlayers.length ? <div className="loading">No data. Hit Refresh.</div> : (
             <table className="audit-table">
-              <thead><tr><th style={{width:50}}>Pos</th><th>Player</th><th className="r">To Par</th><th className="r">R1</th><th className="r">R2</th><th className="r">R3</th><th className="r">R4</th><th className="r">Total Stk</th></tr></thead>
+              <thead><tr><th style={{width:50}}>Pos</th><th>Player</th><th className="r">To Par</th><th className="r">R1</th><th className="r">R2</th><th className="r">R3</th><th className="r">R4</th><th className="r">Total Stk</th><th className="r">Tee Time</th></tr></thead>
               <tbody>
                 {allPlayers.map(p => {
                   const isPicked = allPickNames.has(norm(p.name));
@@ -481,6 +496,7 @@ function MastersPool() {
                         </td>
                       ))}
                       <td className="r" style={{color:"var(--cream)"}}>{totalStrokes||"—"}</td>
+                      <td className="r" style={{fontSize:11,color:"rgba(245,240,232,0.5)"}}>{p.teeTime||"—"}</td>
                     </tr>
                   );
                 })}
