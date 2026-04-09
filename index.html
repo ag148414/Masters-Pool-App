@@ -187,7 +187,7 @@ function parseESPN(data) {
     const linescores = comp.linescores || [];
     const roundStrokes = [null, null, null, null];
     linescores.forEach((ls, i) => {
-      if (i < 4 && ls.value !== undefined && ls.value !== null) {
+      if (i < 4 && ls.value !== undefined && ls.value !== null && Number(ls.value) > 0) {
         roundStrokes[i] = Number(ls.value);
       }
     });
