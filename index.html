@@ -179,25 +179,55 @@ function parseESPN(data) {
   const event = events.find(e => e.name?.toLowerCase().includes("masters")) || events[0];
   const comps = event?.competitions?.[0]?.competitors || [];
 
-  comps.slice(0, 3).forEach(comp => {
-    console.log("RAW COMP:", JSON.stringify(comp));
-  });
   comps.forEach(comp => {
     const name = comp.athlete?.displayName || "";
     if (!name) return;
 
+    // linescores[] = one entry per round started
+    // Each: { value: thruHole, displayValue: round to-par, period: roundNum,
+    //         linescores: [ per-hole scores ] }
+    // Round is complete when inner linescores.length === 18
     const linescores = comp.linescores || [];
     const roundStrokes = [null, null, null, null];
-    linescores.forEach((ls, i) => {
-      if (i < 4 && ls.value !== undefined && ls.value !== null && Number(ls.value) > 0) {
-        roundStrokes[i] = Number(ls.value);
+    const roundsTP = [null, null, null, null];
+    let thru = "-";
+    let teeTime = null;
+
+    linescores.forEach((ls) => {
+      const roundIdx = (ls.period || 1) - 1;
+      if (roundIdx < 0 || roundIdx > 3) return;
+      const innerHoles = ls.linescores || [];
+      const isComplete = innerHoles.length === 18;
+      const dv = String(ls.displayValue ?? "").trim();
+      const dvNum = dv === "E" ? 0 : Number(dv);
+
+      if (isComplete) {
+        // Sum inner hole strokes for round total
+        const total = innerHoles.reduce((a, h) => a + (Number(h.value) || 0), 0);
+        roundStrokes[roundIdx] = total || Number(ls.value);
+        if (!isNaN(dvNum)) roundsTP[roundIdx] = dvNum;
+        thru = "F";
+      } else if (innerHoles.length > 0) {
+        // In-progress: value = holes completed so far
+        thru = String(innerHoles.length);
       }
     });
-    const roundsTP = roundStrokes.map((s) => {
-      if (s === null || s === undefined) return null;
-      return s - PAR;
-    });
 
+    // Tee time from statistics (last stat entry contains a date string)
+    try {
+      const stats = comp.statistics?.categories?.[0]?.stats || [];
+      const teeEntry = stats[stats.length - 1];
+      if (teeEntry?.displayValue && /Apr/i.test(teeEntry.displayValue)) {
+        const d = new Date(teeEntry.displayValue);
+        if (!isNaN(d)) {
+          teeTime = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+        }
+      }
+    } catch(e) {}
+
+    if (thru === "-" && teeTime) thru = teeTime;
+
+    // comp.score = cumulative to-par: "-2", "E", "+1", "-"
     const scoreStr = String(comp.score ?? "").trim();
     let topar = 0;
     if (scoreStr === "E") topar = 0;
@@ -209,7 +239,7 @@ function parseESPN(data) {
     players[norm(name)] = {
       name, pos: "-", topar,
       rounds: roundsTP, strokes: roundStrokes,
-      thru: "-", status: "active", teeTime: null,
+      thru, status: "active", teeTime,
     };
   });
   return players;
