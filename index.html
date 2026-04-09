@@ -190,13 +190,23 @@ function parseESPN(data) {
       return s - PAR;
     });
     const topar = comp.score ? Number(comp.score) : roundsTP.filter(r => r !== null).reduce((a, b) => a + b, 0);
+
+    // Tee time: ESPN stores it in status.teeTime, or as the shortDetail before play starts
+    const shortDetail = comp.status?.type?.shortDetail || "";
+    const isPreRound = !comp.status?.type?.completed && (comp.status?.period === 0 || !comp.status?.period);
+    let teeTime = comp.status?.teeTime || null;
+    if (!teeTime && isPreRound && shortDetail && !/^\d+$/.test(shortDetail) && shortDetail.toUpperCase() !== "CUT") {
+      // shortDetail may contain tee time like "8:00 AM" for players who haven't started
+      teeTime = shortDetail;
+    }
+
     players[norm(name)] = {
       name,
       pos: comp.status?.type?.shortDetail || "-",
       topar, rounds: roundsTP, strokes: roundStrokes,
       thru: comp.status?.period ? (comp.status.type?.completed ? "F" : comp.status.period.toString()) : "-",
       status: isMC ? "cut" : isWD ? "wd" : "active",
-      teeTime: comp.teeTime || null,
+      teeTime,
     };
   });
   return players;
