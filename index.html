@@ -210,18 +210,27 @@ function parseESPN(data) {
       return null;
     });
 
-    // topar: ESPN's comp.score is the cumulative to-par for the tournament
-    // During a live round it reflects current score including in-progress holes
+    // topar: always calculate from linescores to avoid ESPN's ambiguous comp.score field
+    // For active players mid-round, use the displayValue from comp.score if it looks like to-par
     let topar = 0;
-    const scoreStr = String(comp.score ?? "");
-    const scoreNum = Number(scoreStr);
-    if (scoreStr !== "" && scoreStr !== "-" && scoreStr !== "E" && !isNaN(scoreNum)) {
-      topar = scoreNum;
-    } else if (scoreStr === "E") {
-      topar = 0;
+    const completedRoundsTP = roundsTP.filter(r => r !== null);
+    if (isMC || isWD) {
+      topar = roundsTP.reduce((a, b) => a + (b ?? 0), 0);
     } else {
-      // fallback: sum completed rounds
-      topar = roundsTP.filter(r => r !== null).reduce((a, b) => a + b, 0);
+      // Sum completed rounds from linescores
+      topar = completedRoundsTP.reduce((a, b) => a + b, 0);
+      // If player is currently in a round, add their today score from comp.score
+      // comp.score during live play is the TODAY to-par (e.g. "E", "-1", "+2", "1")
+      const scoreStr = String(comp.score ?? "").trim();
+      const inProgress = !isCompleted && currentPeriod > 0 && completedRoundsTP.length < currentPeriod;
+      if (inProgress && scoreStr !== "" && scoreStr !== "-") {
+        if (scoreStr === "E") {
+          // today = 0, already counted
+        } else {
+          const todayScore = Number(scoreStr);
+          if (!isNaN(todayScore)) topar += todayScore;
+        }
+      }
     }
 
     // Tee time: ESPN puts it in status.teeTime or shortDetail before play starts
