@@ -175,58 +175,81 @@ function parseESPN(data) {
   const players = {};
   const events = data?.events || [];
   if (!events.length) return players;
-  const event = events[0];
+
+  // Find the Masters event specifically, fall back to first event
+  const event = events.find(e => e.name?.toLowerCase().includes("masters")) || events[0];
   const comps = event?.competitions?.[0]?.competitors || [];
+
   comps.forEach(comp => {
     const athlete = comp.athlete || {};
     const name = athlete.displayName || "";
     if (!name) return;
-    const status = (comp.status?.type?.name || "").toLowerCase();
-    const isMC = status === "cut" || comp.status?.type?.shortDetail?.toUpperCase() === "CUT";
-    const isWD = status === "wd" || status === "withdrawn";
+
+    const statusType = comp.status?.type || {};
+    const statusName = (statusType.name || "").toLowerCase();
+    const shortDetail = statusType.shortDetail || "";
+    const isMC = statusName === "cut" || shortDetail.toUpperCase() === "CUT";
+    const isWD = statusName === "wd" || statusName === "withdrawn";
+    const isCompleted = !!statusType.completed;
+    const currentPeriod = comp.status?.period || 0; // current round (1-4)
+
+    // linescores: one entry per completed round, value = total strokes that round
     const linescores = comp.linescores || [];
     const roundStrokes = [null, null, null, null];
-    linescores.forEach((ls, i) => {
-      if (i < 4 && ls.value !== undefined && ls.value !== null && Number(ls.value) > 0) {
-        roundStrokes[i] = Number(ls.value);
+    linescores.forEach((ls) => {
+      const round = (ls.period || 0) - 1; // period 1 = R1, index 0
+      if (round >= 0 && round < 4 && ls.value > 0) {
+        roundStrokes[round] = Number(ls.value);
       }
     });
-    const roundsTP = roundStrokes.map((s) => {
-      if (s === null || s === undefined) return (isMC || isWD) ? MC_PENALTY_TO_PAR : null;
-      return s - PAR;
+
+    // For MC/WD, fill unplayed rounds with penalty
+    const roundsTP = roundStrokes.map((s, i) => {
+      if (s !== null) return s - PAR;
+      if (isMC || isWD) return MC_PENALTY_TO_PAR;
+      return null;
     });
 
-    const hasPlayedRounds = roundsTP.some(r => r !== null && !(isMC || isWD));
-    const scoreRaw = comp.score;
+    // topar: ESPN's comp.score is the cumulative to-par for the tournament
+    // During a live round it reflects current score including in-progress holes
     let topar = 0;
-    if (isMC || isWD) {
-      topar = roundsTP.reduce((a, b) => a + (b || 0), 0);
-    } else if (hasPlayedRounds) {
-      const parsed = scoreRaw !== undefined && scoreRaw !== null && scoreRaw !== "" && scoreRaw !== "-" ? Number(scoreRaw) : NaN;
-      topar = !isNaN(parsed) ? parsed : roundsTP.filter(r => r !== null).reduce((a, b) => a + b, 0);
+    const scoreStr = String(comp.score ?? "");
+    const scoreNum = Number(scoreStr);
+    if (scoreStr !== "" && scoreStr !== "-" && scoreStr !== "E" && !isNaN(scoreNum)) {
+      topar = scoreNum;
+    } else if (scoreStr === "E") {
+      topar = 0;
     } else {
-      topar = 0; // pre-round: even par
+      // fallback: sum completed rounds
+      topar = roundsTP.filter(r => r !== null).reduce((a, b) => a + b, 0);
     }
 
-    const shortDetail = comp.status?.type?.shortDetail || "";
-    // Tee time: look in status.teeTime, or shortDetail if it looks like a time
+    // Tee time: ESPN puts it in status.teeTime or shortDetail before play starts
     let teeTime = comp.status?.teeTime || null;
-    const looksLikeTime = /\d+:\d+\s*(AM|PM)/i.test(shortDetail);
-    if (!teeTime && looksLikeTime) teeTime = shortDetail;
+    if (!teeTime && /\d+:\d+\s*(AM|PM)/i.test(shortDetail)) {
+      teeTime = shortDetail;
+    }
 
-    // Thru: hole number if in progress, "F" if complete, tee time if not started, "-" fallback
+    // Thru display
     let thru;
     if (isMC) thru = "CUT";
     else if (isWD) thru = "WD";
-    else if (comp.status?.type?.completed) thru = "F";
-    else if (comp.status?.period && comp.status.period > 0) thru = comp.status.period.toString();
-    else if (teeTime) thru = teeTime; // not yet started — show tee time
-    else thru = "-";
+    else if (isCompleted) thru = "F";
+    else if (currentPeriod > 0 && shortDetail && !/AM|PM/i.test(shortDetail) && shortDetail !== "-") {
+      // shortDetail during play is like "Thru 4" or hole number
+      thru = shortDetail;
+    } else if (teeTime) {
+      thru = teeTime;
+    } else {
+      thru = shortDetail || "-";
+    }
 
     players[norm(name)] = {
       name,
       pos: comp.status?.type?.shortDetail || "-",
-      topar, rounds: roundsTP, strokes: roundStrokes,
+      topar,
+      rounds: roundsTP,
+      strokes: roundStrokes,
       thru,
       status: isMC ? "cut" : isWD ? "wd" : "active",
       teeTime,
@@ -338,9 +361,17 @@ function MastersPool() {
   const fetchScores = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const res = await fetch(ESPN_API);
-      if (!res.ok) throw new Error(`ESPN API returned ${res.status}`);
-      const data = await res.json();
+      // Try direct Masters event first, fall back to scoreboard (which finds by name)
+      let data;
+      try {
+        const res = await fetch("https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard?dates=20260409");
+        if (res.ok) data = await res.json();
+      } catch(e) {}
+      if (!data?.events?.length || !data.events.find(e => e.name?.toLowerCase().includes("masters"))) {
+        const res = await fetch(ESPN_API);
+        if (!res.ok) throw new Error(`ESPN API returned ${res.status}`);
+        data = await res.json();
+      }
       setRawData(data); setPlayerMap(parseESPN(data)); setLastUpdated(new Date());
     } catch (e) { setError(`Could not load live scores: ${e.message}`); }
     finally { setLoading(false); }
@@ -422,7 +453,7 @@ function MastersPool() {
   }
 
   const filteredField = allPlayers.filter(p => !fieldSearch || norm(p.name).includes(norm(fieldSearch)));
-  const tournamentName = rawData?.events?.[0]?.name || "2026 Masters Tournament";
+  const tournamentName = (rawData?.events?.find(e => e.name?.toLowerCase().includes("masters")) || rawData?.events?.[0])?.name || "2026 Masters Tournament";
 
   return (
     <div className="app">
