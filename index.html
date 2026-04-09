@@ -195,20 +195,39 @@ function parseESPN(data) {
       if (s === null || s === undefined) return (isMC || isWD) ? MC_PENALTY_TO_PAR : null;
       return s - PAR;
     });
-    const topar = comp.score ? Number(comp.score) : roundsTP.filter(r => r !== null).reduce((a, b) => a + b, 0);
+
+    const hasPlayedRounds = roundsTP.some(r => r !== null && !(isMC || isWD));
+    const scoreRaw = comp.score;
+    let topar = 0;
+    if (isMC || isWD) {
+      topar = roundsTP.reduce((a, b) => a + (b || 0), 0);
+    } else if (hasPlayedRounds) {
+      const parsed = scoreRaw !== undefined && scoreRaw !== null && scoreRaw !== "" && scoreRaw !== "-" ? Number(scoreRaw) : NaN;
+      topar = !isNaN(parsed) ? parsed : roundsTP.filter(r => r !== null).reduce((a, b) => a + b, 0);
+    } else {
+      topar = 0; // pre-round: even par
+    }
 
     const shortDetail = comp.status?.type?.shortDetail || "";
-    const isPreRound = !comp.status?.type?.completed && (comp.status?.period === 0 || !comp.status?.period);
+    // Tee time: look in status.teeTime, or shortDetail if it looks like a time
     let teeTime = comp.status?.teeTime || null;
-    if (!teeTime && isPreRound && shortDetail && !/^\d+$/.test(shortDetail) && shortDetail.toUpperCase() !== "CUT") {
-      teeTime = shortDetail;
-    }
+    const looksLikeTime = /\d+:\d+\s*(AM|PM)/i.test(shortDetail);
+    if (!teeTime && looksLikeTime) teeTime = shortDetail;
+
+    // Thru: hole number if in progress, "F" if complete, tee time if not started, "-" fallback
+    let thru;
+    if (isMC) thru = "CUT";
+    else if (isWD) thru = "WD";
+    else if (comp.status?.type?.completed) thru = "F";
+    else if (comp.status?.period && comp.status.period > 0) thru = comp.status.period.toString();
+    else if (teeTime) thru = teeTime; // not yet started — show tee time
+    else thru = "-";
 
     players[norm(name)] = {
       name,
       pos: comp.status?.type?.shortDetail || "-",
       topar, rounds: roundsTP, strokes: roundStrokes,
-      thru: comp.status?.period ? (comp.status.type?.completed ? "F" : comp.status.period.toString()) : "-",
+      thru,
       status: isMC ? "cut" : isWD ? "wd" : "active",
       teeTime,
     };
@@ -508,9 +527,11 @@ function MastersPool() {
                     <td className="r">
                       {p.status==="cut"?<span className="thru-badge cut">CUT</span>
                       :p.status==="wd"?<span className="thru-badge wd">WD</span>
-                      :<span className="thru-badge active">{p.thru||"-"}</span>}
+                      :p.thru==="F"?<span className="thru-badge active">F</span>
+                      :/^\d+$/.test(p.thru)?<span className="thru-badge active">{p.thru}</span>
+                      :<span style={{fontSize:11,color:"rgba(245,240,232,0.5)"}}>{p.thru||"—"}</span>}
                     </td>
-                    <td className="r" style={{fontSize:11,color:"rgba(245,240,232,0.5)"}}>{p.teeTime||"—"}</td>
+                    <td className="r" style={{fontSize:11,color:"rgba(245,240,232,0.5)"}}>{/\d+:\d+/.test(p.thru||"")?p.thru:p.teeTime||"—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -562,9 +583,9 @@ function MastersPool() {
                       <td className="r">
                         {p.status==="cut" ? <span className="thru-badge cut">CUT</span>
                         : p.status==="wd" ? <span className="thru-badge wd">WD</span>
-                        : p.thru && p.thru !== "-" ? <span className="thru-badge active">{p.thru}</span>
-                        : p.teeTime ? <span style={{fontSize:11,color:"rgba(245,240,232,0.5)"}}>{p.teeTime}</span>
-                        : <span style={{color:"rgba(245,240,232,0.3)"}}>—</span>}
+                        : p.thru==="F" ? <span className="thru-badge active">F</span>
+                        : /^\d+$/.test(p.thru||"") ? <span className="thru-badge active">{p.thru}</span>
+                        : <span style={{fontSize:11,color:"rgba(245,240,232,0.5)"}}>{p.teeTime||"—"}</span>}
                       </td>
                     </tr>
                   );
