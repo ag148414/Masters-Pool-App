@@ -183,29 +183,18 @@ function parseESPN(data) {
     const name = comp.athlete?.displayName || "";
     if (!name) return;
 
-    // From console: comp only has {score, linescores, athlete}
-    // linescores: [{period:1, value:25, displayValue:"-2"}, {period:2}]
-    // period = round number. During R1: one entry with value=strokes so far, displayValue=today to-par
-    // After R1 complete: value = full round strokes (65-80 range), displayValue = round to-par
-
     const linescores = comp.linescores || [];
     const roundStrokes = [null, null, null, null];
-    const roundsTP = [null, null, null, null];
-
-    linescores.forEach((ls) => {
-      const idx = (ls.period || 1) - 1;
-      if (idx < 0 || idx > 3) return;
-      const val = Number(ls.value);
-      const dv = String(ls.displayValue ?? "").trim();
-      // Only treat as a completed round if value is a realistic 18-hole score (60+)
-      if (val >= 60) {
-        roundStrokes[idx] = val;
-        if (dv === "E") roundsTP[idx] = 0;
-        else { const n = Number(dv); if (!isNaN(n)) roundsTP[idx] = n; }
+    linescores.forEach((ls, i) => {
+      if (i < 4 && ls.value !== undefined && ls.value !== null && Number(ls.value) > 0) {
+        roundStrokes[i] = Number(ls.value);
       }
     });
+    const roundsTP = roundStrokes.map((s) => {
+      if (s === null || s === undefined) return null;
+      return s - PAR;
+    });
 
-    // comp.score = cumulative to-par string: "-4", "E", "+2", "-"
     const scoreStr = String(comp.score ?? "").trim();
     let topar = 0;
     if (scoreStr === "E") topar = 0;
@@ -214,13 +203,10 @@ function parseESPN(data) {
       if (!isNaN(n)) topar = n;
     }
 
-    // Thru: ESPN doesn't provide hole/status in this endpoint, show "-"
-    const thru = "-";
-
     players[norm(name)] = {
       name, pos: "-", topar,
       rounds: roundsTP, strokes: roundStrokes,
-      thru, status: "active", teeTime: null,
+      thru: "-", status: "active", teeTime: null,
     };
   });
   return players;
