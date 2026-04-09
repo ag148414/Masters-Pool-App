@@ -232,18 +232,19 @@ function parseESPN(data) {
       teeTime = shortDetail;
     }
 
-    // Thru display
+    // Thru display — shortDetail during play is like "*4" (on hole 4) or "Thru 4" (finished 4)
     let thru;
     if (isMC) thru = "CUT";
     else if (isWD) thru = "WD";
     else if (isCompleted) thru = "F";
-    else if (currentPeriod > 0 && shortDetail && !/AM|PM/i.test(shortDetail) && shortDetail !== "-") {
-      // shortDetail during play is like "Thru 4" or hole number
-      thru = shortDetail;
+    else if (shortDetail && !/AM|PM/i.test(shortDetail) && shortDetail !== "-" && shortDetail.toUpperCase() !== "CUT") {
+      // Extract just the number if present: "*4" → "4", "Thru 4" → "4", "4" → "4"
+      const holeMatch = shortDetail.match(/\d+/);
+      thru = holeMatch ? holeMatch[0] : shortDetail;
     } else if (teeTime) {
       thru = teeTime;
     } else {
-      thru = shortDetail || "-";
+      thru = "-";
     }
 
     players[norm(name)] = {
