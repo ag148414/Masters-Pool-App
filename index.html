@@ -179,6 +179,10 @@ function parseESPN(data) {
   const event = events.find(e => e.name?.toLowerCase().includes("masters")) || events[0];
   const comps = event?.competitions?.[0]?.competitors || [];
 
+  // Debug: log first player with no linescores
+  const noRound = comps.find(c => !c.linescores?.length);
+  if (noRound) console.log("NO-ROUND COMP:", JSON.stringify(noRound));
+
   comps.forEach(comp => {
     const name = comp.athlete?.displayName || "";
     if (!name) return;
