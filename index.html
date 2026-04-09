@@ -532,7 +532,7 @@ function MastersPool() {
           </div>
           {!allPlayers.length ? <div className="loading">No data. Hit Refresh.</div> : (
             <table className="audit-table">
-              <thead><tr><th style={{width:50}}>Pos</th><th>Player</th><th className="r">To Par</th><th className="r">R1</th><th className="r">R2</th><th className="r">R3</th><th className="r">R4</th><th className="r">Total Stk</th><th className="r">Tee Time</th></tr></thead>
+              <thead><tr><th style={{width:50}}>Pos</th><th>Player</th><th className="r">To Par</th><th className="r">R1</th><th className="r">R2</th><th className="r">R3</th><th className="r">R4</th><th className="r">Total Stk</th><th className="r">Thru</th></tr></thead>
               <tbody>
                 {allPlayers.map(p => {
                   const pickCount = pickCountMap[norm(p.name)] || 0;
@@ -559,7 +559,13 @@ function MastersPool() {
                         </td>
                       ))}
                       <td className="r" style={{color:"var(--cream)"}}>{totalStrokes||"—"}</td>
-                      <td className="r" style={{fontSize:11,color:"rgba(245,240,232,0.5)"}}>{p.teeTime||"—"}</td>
+                      <td className="r">
+                        {p.status==="cut" ? <span className="thru-badge cut">CUT</span>
+                        : p.status==="wd" ? <span className="thru-badge wd">WD</span>
+                        : p.thru && p.thru !== "-" ? <span className="thru-badge active">{p.thru}</span>
+                        : p.teeTime ? <span style={{fontSize:11,color:"rgba(245,240,232,0.5)"}}>{p.teeTime}</span>
+                        : <span style={{color:"rgba(245,240,232,0.3)"}}>—</span>}
+                      </td>
                     </tr>
                   );
                 })}
