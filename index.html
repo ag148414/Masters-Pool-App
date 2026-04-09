@@ -179,6 +179,9 @@ function parseESPN(data) {
   const event = events.find(e => e.name?.toLowerCase().includes("masters")) || events[0];
   const comps = event?.competitions?.[0]?.competitors || [];
 
+  comps.slice(0, 3).forEach(comp => {
+    console.log("RAW COMP:", JSON.stringify(comp));
+  });
   comps.forEach(comp => {
     const name = comp.athlete?.displayName || "";
     if (!name) return;
