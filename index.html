@@ -176,79 +176,51 @@ function parseESPN(data) {
   const events = data?.events || [];
   if (!events.length) return players;
 
-  // Find the Masters event specifically, fall back to first event
   const event = events.find(e => e.name?.toLowerCase().includes("masters")) || events[0];
   const comps = event?.competitions?.[0]?.competitors || [];
 
-  comps.slice(0, 3).forEach(comp => {
-    console.log("ESPN full comp:", comp.athlete?.displayName, JSON.stringify({
-      score: comp.score,
-      status: comp.status,
-      linescores: comp.linescores?.map(ls => ({period: ls.period, value: ls.value, displayValue: ls.displayValue})),
-    }));
-  });
   comps.forEach(comp => {
-    const athlete = comp.athlete || {};
-    const name = athlete.displayName || "";
+    const name = comp.athlete?.displayName || "";
     if (!name) return;
 
-    // ESPN's scoreboard API for this event has NO status object on competitors
-    // Only comp.score (cumulative to-par string) and comp.linescores[] are available
-    // linescores: period = round number (1-4), value = total strokes that round,
-    //             displayValue = to-par for that round ("-2", "E", "+1")
+    // From console: comp only has {score, linescores, athlete}
+    // linescores: [{period:1, value:25, displayValue:"-2"}, {period:2}]
+    // period = round number. During R1: one entry with value=strokes so far, displayValue=today to-par
+    // After R1 complete: value = full round strokes (65-80 range), displayValue = round to-par
+
     const linescores = comp.linescores || [];
     const roundStrokes = [null, null, null, null];
-    const roundTP = [null, null, null, null];
+    const roundsTP = [null, null, null, null];
 
     linescores.forEach((ls) => {
       const idx = (ls.period || 1) - 1;
       if (idx < 0 || idx > 3) return;
-      if (ls.value > 0) roundStrokes[idx] = Number(ls.value);
+      const val = Number(ls.value);
       const dv = String(ls.displayValue ?? "").trim();
-      if (dv === "E") roundTP[idx] = 0;
-      else { const n = Number(dv); if (!isNaN(n) && dv !== "") roundTP[idx] = n; }
+      // Only treat as a completed round if value is a realistic 18-hole score (60+)
+      if (val >= 60) {
+        roundStrokes[idx] = val;
+        if (dv === "E") roundsTP[idx] = 0;
+        else { const n = Number(dv); if (!isNaN(n)) roundsTP[idx] = n; }
+      }
     });
 
-    const roundsTP = roundTP.map((r, i) => {
-      if (r !== null) return r;
-      if (roundStrokes[i] !== null) return roundStrokes[i] - PAR;
-      return null;
-    });
-
-    // comp.score = cumulative tournament to-par: "-4", "E", "+2", "-" (pre-round)
+    // comp.score = cumulative to-par string: "-4", "E", "+2", "-"
     const scoreStr = String(comp.score ?? "").trim();
     let topar = 0;
-    if (scoreStr === "E" || scoreStr === "0") topar = 0;
+    if (scoreStr === "E") topar = 0;
     else if (scoreStr !== "" && scoreStr !== "-") {
       const n = Number(scoreStr);
-      topar = isNaN(n) ? 0 : n;
+      if (!isNaN(n)) topar = n;
     }
 
-    // Determine how many holes played this round from strokes
-    // In-progress round linescore value = strokes played so far (not a full round total)
-    // A completed round has value >= 60 (realistic score). In-progress value < 30 = hole number approx
-    const inProgressLS = linescores.find(ls => ls.value > 0 && ls.value < 50);
-    const completedRounds = linescores.filter(ls => ls.value >= 60).length;
-    const thruHole = inProgressLS ? inProgressLS.value : null;
-
-    let thru;
-    if (completedRounds === 4) thru = "F";
-    else if (thruHole !== null) thru = String(thruHole);
-    else if (completedRounds === 0 && linescores.length === 0) thru = "-";
-    else thru = "-";
-
-    const isMC = false; // no status data available from this endpoint
-    const isWD = false;
+    // Thru: ESPN doesn't provide hole/status in this endpoint, show "-"
+    const thru = "-";
 
     players[norm(name)] = {
-      name,
-      pos: comp.status?.type?.shortDetail || "-",
-      topar,
-      rounds: roundsTP,
-      strokes: roundStrokes,
-      thru,
-      status: isMC ? "cut" : isWD ? "wd" : "active",
-      teeTime,
+      name, pos: "-", topar,
+      rounds: roundsTP, strokes: roundStrokes,
+      thru, status: "active", teeTime: null,
     };
   });
   return players;
