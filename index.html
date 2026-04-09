@@ -262,9 +262,9 @@ function parseESPN(data) {
 
 function computePickScore(name, playerMap) {
   const p = playerMap[norm(name)];
-  if (!p) return { name, rounds: [MC_PENALTY_TO_PAR,MC_PENALTY_TO_PAR,MC_PENALTY_TO_PAR,MC_PENALTY_TO_PAR], total: MC_PENALTY_TO_PAR*4, status: "unknown" };
-  const total = p.rounds.filter(r => r !== null).reduce((a, b) => a + b, 0);
-  return { name, rounds: p.rounds, total, status: p.status, thru: p.thru, pos: p.pos };
+  if (!p) return { name, rounds: [null,null,null,null], total: MC_PENALTY_TO_PAR*4, status: "unknown" };
+  // Use p.topar directly — this is ESPN's live cumulative to-par, same as their Total column
+  return { name, rounds: p.rounds, strokes: p.strokes, total: p.topar, status: p.status, thru: p.thru, pos: p.pos };
 }
 
 function computeParticipantScore(participant, playerMap) {
