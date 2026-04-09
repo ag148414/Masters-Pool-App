@@ -180,72 +180,65 @@ function parseESPN(data) {
   const event = events.find(e => e.name?.toLowerCase().includes("masters")) || events[0];
   const comps = event?.competitions?.[0]?.competitors || [];
 
+  comps.slice(0, 3).forEach(comp => {
+    console.log("ESPN full comp:", comp.athlete?.displayName, JSON.stringify({
+      score: comp.score,
+      status: comp.status,
+      linescores: comp.linescores?.map(ls => ({period: ls.period, value: ls.value, displayValue: ls.displayValue})),
+    }));
+  });
   comps.forEach(comp => {
     const athlete = comp.athlete || {};
     const name = athlete.displayName || "";
     if (!name) return;
 
-    const statusType = comp.status?.type || {};
-    const statusName = (statusType.name || "").toLowerCase();
-    const shortDetail = statusType.shortDetail || "";
-    const isMC = statusName === "cut" || shortDetail.toUpperCase() === "CUT";
-    const isWD = statusName === "wd" || statusName === "withdrawn";
-    const isCompleted = !!statusType.completed;
-    const currentPeriod = comp.status?.period || 0; // current round (1-4)
-
-    // linescores: one entry per completed round, value = total strokes that round
+    // ESPN's scoreboard API for this event has NO status object on competitors
+    // Only comp.score (cumulative to-par string) and comp.linescores[] are available
+    // linescores: period = round number (1-4), value = total strokes that round,
+    //             displayValue = to-par for that round ("-2", "E", "+1")
     const linescores = comp.linescores || [];
     const roundStrokes = [null, null, null, null];
+    const roundTP = [null, null, null, null];
+
     linescores.forEach((ls) => {
-      const round = (ls.period || 0) - 1; // period 1 = R1, index 0
-      if (round >= 0 && round < 4 && ls.value > 0) {
-        roundStrokes[round] = Number(ls.value);
-      }
+      const idx = (ls.period || 1) - 1;
+      if (idx < 0 || idx > 3) return;
+      if (ls.value > 0) roundStrokes[idx] = Number(ls.value);
+      const dv = String(ls.displayValue ?? "").trim();
+      if (dv === "E") roundTP[idx] = 0;
+      else { const n = Number(dv); if (!isNaN(n) && dv !== "") roundTP[idx] = n; }
     });
 
-    // For MC/WD, fill unplayed rounds with penalty
-    const roundsTP = roundStrokes.map((s, i) => {
-      if (s !== null) return s - PAR;
-      if (isMC || isWD) return MC_PENALTY_TO_PAR;
+    const roundsTP = roundTP.map((r, i) => {
+      if (r !== null) return r;
+      if (roundStrokes[i] !== null) return roundStrokes[i] - PAR;
       return null;
     });
 
-    // comp.score IS the cumulative to-par string ESPN shows on their leaderboard
-    // e.g. "-4", "+2", "E", "-" (pre-round). Trust it directly.
-    let topar = 0;
+    // comp.score = cumulative tournament to-par: "-4", "E", "+2", "-" (pre-round)
     const scoreStr = String(comp.score ?? "").trim();
-    if (isMC || isWD) {
-      // For MC/WD sum the penalized rounds
-      topar = roundsTP.reduce((a, b) => a + (b ?? 0), 0);
-    } else if (scoreStr === "E" || scoreStr === "0") {
-      topar = 0;
-    } else if (scoreStr !== "" && scoreStr !== "-") {
-      const parsed = Number(scoreStr);
-      topar = isNaN(parsed) ? 0 : parsed;
-    } else {
-      topar = 0; // pre-round
+    let topar = 0;
+    if (scoreStr === "E" || scoreStr === "0") topar = 0;
+    else if (scoreStr !== "" && scoreStr !== "-") {
+      const n = Number(scoreStr);
+      topar = isNaN(n) ? 0 : n;
     }
 
-    // Tee time: ESPN puts it in status.teeTime or shortDetail before play starts
-    let teeTime = comp.status?.teeTime || null;
-    if (!teeTime && /\d+:\d+\s*(AM|PM)/i.test(shortDetail)) {
-      teeTime = shortDetail;
-    }
+    // Determine how many holes played this round from strokes
+    // In-progress round linescore value = strokes played so far (not a full round total)
+    // A completed round has value >= 60 (realistic score). In-progress value < 30 = hole number approx
+    const inProgressLS = linescores.find(ls => ls.value > 0 && ls.value < 50);
+    const completedRounds = linescores.filter(ls => ls.value >= 60).length;
+    const thruHole = inProgressLS ? inProgressLS.value : null;
 
-    // Thru display — shortDetail during play is like "*4" (on hole 4) or "Thru 4" (finished 4)
     let thru;
-    if (isMC) thru = "CUT";
-    else if (isWD) thru = "WD";
-    else if (isCompleted) thru = "F";
-    else if (shortDetail && !/AM|PM/i.test(shortDetail) && shortDetail !== "-" && shortDetail.toUpperCase() !== "CUT") {
-      // Extract just the number if present: "*4" → "4", "Thru 4" → "4", "4" → "4"
-      const holeMatch = shortDetail.match(/\d+/);
-      thru = holeMatch ? holeMatch[0] : shortDetail;
-    } else if (teeTime) {
-      thru = teeTime;
-    } else {
-      thru = "-";
-    }
+    if (completedRounds === 4) thru = "F";
+    else if (thruHole !== null) thru = String(thruHole);
+    else if (completedRounds === 0 && linescores.length === 0) thru = "-";
+    else thru = "-";
+
+    const isMC = false; // no status data available from this endpoint
+    const isWD = false;
 
     players[norm(name)] = {
       name,
