@@ -554,7 +554,7 @@ function MastersPool() {
                     <td className="live-pos">{p.pos}</td>
                     <td><span className="live-name">{p.name}</span></td>
                     <td className="r"><span className={`score-pill ${cls(p.topar)}`}>{fmt(p.topar)}</span></td>
-                    {p.strokes.map((s,i) => <td key={i} className="r">{s!==null?fmt(s-PAR):"—"}</td>)}
+                    {p.strokes.map((s,i) => <td key={i} className="r" style={{color:"rgba(245,240,232,0.65)"}}>{s!==null ? s : "—"}</td>)}
                     <td className="r">
                       {p.status==="cut"?<span className="thru-badge cut">CUT</span>
                       :p.status==="wd"?<span className="thru-badge wd">WD</span>
